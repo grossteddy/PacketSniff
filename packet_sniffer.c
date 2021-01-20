@@ -1,7 +1,13 @@
+#include<netinet/in.h>
+#include<errno.h>
+#include<netdb.h>
+
 #include<stdio.h>	//For standard things
 #include<string.h>	//For strcpy
 #include<netinet/ip_icmp.h>	//Provides declarations for icmp header
 #include<netinet/ip.h>	//Provides declarations for ip header
+#include<netinet/if_ether.h>	//For ETH_P_ALL
+#include<net/ethernet.h>	//For ether_header
 #include<sys/socket.h>
 #include<arpa/inet.h>
 
@@ -24,17 +30,18 @@ int main()
 	
 	printf("Starting...\n");
 	//Create a raw socket that shall sniff
-	sock_raw = socket(AF_INET , SOCK_RAW , IPPROTO_ICMP);
+	sock_raw = socket(AF_PACKET  , SOCK_RAW , htons(ETH_P_ALL));
 	if(sock_raw < 0)
 	{
 		printf("Socket Error\n");
 		return 1;
 	}
+
 	while(1)
 	{
 		saddr_size = sizeof saddr;
 		//Receive a packet
-		data_size = recvfrom(sock_raw , buffer , sizeof(buffer) , 0 , &saddr , &saddr_size);
+		data_size = recvfrom(sock_raw , buffer , PACKET_BUFFER_SIZE , 0 , &saddr , (socklen_t*)&saddr_size);
 		if(data_size < 0)
 		{
 			printf("Recvfrom error , failed to get packets\n");
@@ -52,27 +59,23 @@ int main()
 
 void ProcessPacket(unsigned char* buffer, int size)
 {
-	//Get the IP Header part of this packet
-	struct iphdr *iph = (struct iphdr*)buffer;
+	///Get the IP Header part of this packet , excluding the ethernet header
+	struct iphdr *iph = (struct iphdr*)(buffer + sizeof(struct ethhdr));
 	
 	if ((iph->protocol) == 1) //Check the Protocol and do accordingly...
 	{	
 		print_icmp_packet(buffer , size);
 	}
-    else 
-    {
-        printf("ProcessPacket error");
-    }
 }
 
 void print_icmp_packet(unsigned char* Buffer , int Size)
 {
 	unsigned short iphdrlen;
 	
-	struct iphdr *iph = (struct iphdr *)Buffer;
-	iphdrlen = iph->ihl*4;
+	struct iphdr *iph = (struct iphdr *)(Buffer  + sizeof(struct ethhdr));
+	iphdrlen = iph->ihl * 4;
 	
-	struct icmphdr *icmph = (struct icmphdr *)(Buffer + iphdrlen);
+	struct icmphdr *icmph = (struct icmphdr *)(Buffer + iphdrlen  + sizeof(struct ethhdr));
 
     struct sockaddr_in src_ip = { 0 };
 	src_ip.sin_addr.s_addr = iph->saddr;
